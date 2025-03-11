@@ -1,39 +1,54 @@
-# This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
-# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
-name: CMake on a single platform
+name: nightly-integration-test
 
+# Controls when the workflow will run
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
+  schedule:
+    - cron: "0 22 * * *"  # every day at 22pm on default branch
 
 jobs:
-  build:
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  check_date:
     runs-on: ubuntu-latest
-
+    name: Check latest commit
+    outputs:
+      should_run: ${{ steps.should_run.outputs.should_run }}
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: print latest_commit
+        run: echo ${{ github.sha }}
+      - id: should_run
+        continue-on-error: true
+        name: check latest commit is less than a day
+        if: ${{ github.event_name == 'schedule' }}
+        run: test -z $(git rev-list  --after="24 hours"  ${{ github.sha }}) && echo "::set-output name=should_run::false"
+  build_and_deploy:
+    runs-on: hpc
+    name: Build and deploy
+    needs: check_date
+    if: ${{ needs.check_date.outputs.should_run != 'false' }}
+    steps:
+      - name: Build and deploy the suite
+        uses: ecmwf-actions/reusable-workflows/ci-hpc-generic@v2
+        with:
+          template: |
+            set -eux
+            echo "Job is running on ${{ runner.os }}"
 
-    - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+            # Load modules of interest
+            module load ecmwf-toolbox
+            module load cmake
 
-    - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+            # Clone the repository
+            PACKAGE_NAME=geff
+            PACKAGE_BRANCH=${{ github.head_ref || github.ref_name }}
+            git clone -b $PACKAGE_BRANCH https://${{ secrets.GH_REPO_READ_TOKEN }}@github.com/ecmwf/${PACKAGE_NAME}.git
+            cd $PACKAGE_NAME
+            mkdir build && cd build
+            cmake ../
+            make
 
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
-
+          sbatch_options: |
+            #SBATCH --job-name=geff_build
+            #SBATCH --time=00:10:00
+            #SBATCH --qos=nf
+          troika_user: ${{ secrets.HPC_CI_INTEGRATION_USER }}
+          site: hpc-batch
