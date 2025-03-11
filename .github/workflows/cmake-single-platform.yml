@@ -1,4 +1,4 @@
- name: nightly-integration-test
+name: nightly-integration-test
 
 # Controls when the workflow will run
 on:
