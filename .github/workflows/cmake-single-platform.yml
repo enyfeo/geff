@@ -1,4 +1,4 @@
-name: nightly-integration-test
+ name: nightly-integration-test
 
 # Controls when the workflow will run
 on:
@@ -20,9 +20,9 @@ jobs:
         name: check latest commit is less than a day
         if: ${{ github.event_name == 'schedule' }}
         run: test -z $(git rev-list  --after="24 hours"  ${{ github.sha }}) && echo "::set-output name=should_run::false"
-  build_and_deploy:
+  build_geff_module:
     runs-on: hpc
-    name: Build and deploy
+    name: Build GEFF Module
     needs: check_date
     if: ${{ needs.check_date.outputs.should_run != 'false' }}
     steps:
