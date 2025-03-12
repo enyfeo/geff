@@ -38,7 +38,7 @@ jobs:
             # Clone the repository
             PACKAGE_NAME=geff
             PACKAGE_BRANCH=${{ github.head_ref || github.ref_name }}
-            git clone -b $PACKAGE_BRANCH https://${{ secrets.GH_REPO_READ_TOKEN }}@github.com/ecmwf/${PACKAGE_NAME}.git
+            git clone -b $PACKAGE_BRANCH https://git@github.com/ecmwf/${PACKAGE_NAME}.git
             cd $PACKAGE_NAME
             mkdir build && cd build
             cmake ../
